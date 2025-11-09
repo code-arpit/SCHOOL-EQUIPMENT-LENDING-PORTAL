@@ -1,0 +1,123 @@
+SCHOOL EQUIPMENT LENDING PORTAL - ARCHITECTURE OVERVIEW
+========================================================
+
+1. System Overview
+------------------
+- **Purpose**: Manage school equipment inventory, lend-out requests, approvals, and returns.
+- **Stack**: FastAPI backend with SQLite storage (SQLAlchemy ORM), RESTful APIs, JWT-based auth.
+- **Deployment**: Designed for containerization via Docker; configurable through environment variables (dotenv).
+
+2. Project Layout
+-----------------
+app/
+  main.py            - FastAPI bootstrap, router registration, metadata
+  database.py        - SQLAlchemy engine, SessionLocal, declarative base
+  models.py          - ORM models (User, Equipment)
+  schemas.py         - Pydantic request/response models
+  crud.py            - Data access helpers (users, equipment)
+  security.py        - Password hashing & JWT utilities
+  api/
+    __init__.py
+    models.py        - (alt location mirroring core models)
+    schemas.py       - (alt Pydantic schemas used by package imports)
+    crud.py          - (alt CRUD helpers)
+    database.py      - (alt DB bootstrap)
+    main.py          - (alt entry-point mirroring app/main.py for package usage)
+    v1/
+      api.py         - API router aggregator
+      endpoints/
+        equipment.py - Equipment endpoints (CRUD)
+        auth.py      - Authentication endpoints (signup/login)
+
+3. Runtime Requirements
+-----------------------
+Core dependencies declared in `requirements.txt`:
+- fastapi
+- uvicorn[standard]
+- python-dotenv
+- SQLAlchemy
+- passlib[bcrypt]
+- python-jose[cryptography]
+- python-multipart
+- email-validator
+
+4. Configuration Inputs
+-----------------------
+Environment variables (via `.env`):
+- `APP_NAME` (default: School Equipment Lending Portal)
+- `DATABASE_URL` (default: sqlite:///./test.db)
+- `SECRET_KEY` (JWT signing; default static fallback)
+- `ACCESS_TOKEN_EXPIRE_MINUTES` (optional override via code constant)
+
+5. Request Flow
+---------------
+ASCII flow for a protected endpoint (e.g., create equipment):
+
+Client --> FastAPI Router (`/api/v1/equipment`) --> Dependency: get_db(SessionLocal)
+        --> CRUD helper in `app/crud.py`
+        --> SQLAlchemy ORM --> SQLite DB
+        <-- Response serialized through Pydantic schema --> Client
+
+Authentication flow (login):
+
+Client (credentials) --> `/api/v1/auth/login/access-token`
+        --> CRUD.get_user_by_email --> verify_password (bcrypt)
+        --> JWT token issued (python-jose) --> Returned to client
+
+6. API Layer Summary
+--------------------
+- `/api/v1/auth/signup` (POST): create user record (role defaults to student)
+- `/api/v1/auth/login/access-token` (POST): returns JWT bearer token
+- `/api/v1/equipment/` (GET/POST): list & create equipment (protected future enhancement)
+- `/api/v1/equipment/{id}` (GET/PUT/DELETE): retrieve/update/delete equipment
+
+7. Database Schema
+------------------
+Current SQLAlchemy models:
+
++-----------+            +--------------+
+|  users    |            |  equipment   |
++-----------+            +--------------+
+| id (PK)   |            | id (PK)      |
+| email     | UNIQUE     | name         |
+| full_name |            | category     |
+| hashed_pw |            | condition    |
+| role      | enum       | quantity     |
+| is_active | bool       | availability |
++-----------+            +--------------+
+
+Notes:
+- `role` enum: student, staff, admin.
+- `condition` enum: new, good, fair, poor.
+- Foreign-key relations for borrow/return workflows planned but not yet implemented.
+
+8. Authentication & Authorization
+---------------------------------
+- Passwords hashed with bcrypt (`passlib` context).
+- JWT tokens signed with HS256 (secret key from ENV).
+- `ACCESS_TOKEN_EXPIRE_MINUTES` default 30 mins (overridable).
+- Role-based access hooks to be layered on router dependencies (future work).
+
+9. Containerization
+-------------------
+`Dockerfile` highlights:
+- Base image: python:3.9-slim
+- Working dir `/code`
+- Installs dependencies from `requirements.txt`
+- Copies `app/` into container
+- Entrypoint: `uvicorn app.main:app --host 0.0.0.0 --port 8000`
+- `.dockerignore` excludes virtualenvs, caches, `.env`, IDE files.
+
+10. Testing & Docs
+------------------
+- Interactive docs auto-generated at `/docs` (Swagger UI) and `/redoc`.
+- (Planned) Add pytest suite & Postman collection.
+
+11. Future Enhancements
+-----------------------
+- BorrowRequest model (linking users & equipment with approval status, due dates).
+- Role-based route guards for staff/admin actions.
+- Notification service for overdue items (optional enhancement).
+- Frontend integration using React (Phase 1 scope pending).
+
+End of Architecture Summary.
